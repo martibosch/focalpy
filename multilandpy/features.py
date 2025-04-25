@@ -3,7 +3,7 @@
 import shutil
 import tempfile
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Mapping, Sequence
 from os import path
 
 import geopandas as gpd
@@ -159,10 +159,157 @@ class MultiScaleFeatureComputer(RegionMixin):
             ).to_crs(self.CRS)
             return self._building_gdf
 
+    # compute methods
+    ## vector
+    @staticmethod
+    def _compute_vector(
+        gdf: gpd.GeoDataFrame | gpd.GeoSeries | utils.PathType,
+        site_gser: gpd.GeoSeries,
+        buffer_dists: Sequence[float],
+        _site_gb_to_feature_ser: Callable,
+        *args,
+        **kwargs: utils.KwargsType,
+    ):
+        # TODO: DRY with `_multiscale_raster_feature_df`
+        site_index_name = site_gser.index.name
+        if site_index_name is None:
+            site_index_name = "site_id"
+            site_gser = site_gser.rename_axis(site_index_name)
+
+        feature_dfs = []
+        for buffer_dist in buffer_dists:
+            site_gb = (
+                site_gser.buffer(buffer_dist)
+                .to_frame(name="geometry")
+                .sjoin(gdf)
+                .reset_index(site_index_name)
+                .groupby(by=site_index_name)
+            )
+            feature_dfs.append(
+                _site_gb_to_feature_ser(site_gb, *args, **kwargs).assign(
+                    buffer_dist=buffer_dist
+                )
+            )
+
+        return (
+            pd.concat(
+                feature_dfs,
+                axis="rows",
+            )
+            .fillna(0)
+            .set_index("buffer_dist", append=True)
+            .sort_index()
+        )
+
+    @staticmethod
+    def compute_vector_agg(
+        data: gpd.GeoDataFrame | gpd.GeoSeries | utils.PathType,
+        site_gser: gpd.GeoSeries,
+        buffer_dists: Sequence[float],
+        agg_func: Callable | str | Sequence | Mapping,
+        *,
+        agg_func_args: Sequence | None = None,
+        **agg_func_kwargs: utils.KwargsType,
+    ) -> pd.DataFrame | pd.Series:
+        """Compute multi-scale vector aggregation features.
+
+        Parameters
+        ----------
+        data : geopandas.GeoDataFrame, geopandas.GeoSeries or path-like
+            Vector data to compute features.
+        site_gser : geopandas.GeoSeries
+            Site locations (point geometries) to compute features.
+        buffer_dists : list-like of numeric
+            The buffer distances to compute features, in the same units as the tree
+            canopy raster CRS.
+        agg_func : callable, str, sequence or mapping
+            The aggregation to apply to the data, passed to the `agg` method of the
+            group-by object This can be a callable, a string (e.g., "sum", "mean"),
+            a sequence of strings (e.g., ["sum", "mean"]), or a mapping of column names
+            to aggregation functions (e.g., {"building_area": "sum"}).
+        agg_func_args, agg_func_kwargs : sequence (args), mapping (kwargs), optional
+            Additional arguments and keyword arguments to pass to the aggregation
+            function.
+
+        Returns
+        -------
+        features : pandas.DataFrame or pandas.Series
+            The computed features for each site (first-level index) and buffer distance
+            (second-level index), as a series (for a single feature) or data frame (for
+            multiple features).
+        """
+        if agg_func_args is None:
+            agg_func_args = []
+        if agg_func_kwargs is None:
+            agg_func_kwargs = {}
+
+        def _agg(site_gb):
+            return site_gb.agg(agg_func, *agg_func_args, **agg_func_kwargs)
+
+        return MultiScaleFeatureComputer._compute_vector(
+            data, site_gser, buffer_dists, _agg
+        )
+
+    @staticmethod
+    def compute_vector_apply(
+        data: gpd.GeoDataFrame | gpd.GeoSeries | utils.PathType,
+        site_gser: gpd.GeoSeries,
+        buffer_dists: Sequence[float],
+        apply_func: Callable,
+        *,
+        include_groups: bool = False,
+        apply_func_args: Sequence | None = None,
+        **apply_func_kwargs: utils.KwargsType,
+    ) -> pd.DataFrame | pd.Series:
+        """Compute multi-scale vector features using a groupby-apply approach.
+
+        Parameters
+        ----------
+        data : geopandas.GeoDataFrame, geopandas.GeoSeries or path-like
+            Vector data to compute features.
+        site_gser : geopandas.GeoSeries
+            Site locations (point geometries) to compute features.
+        buffer_dists : list-like of numeric
+            The buffer distances to compute features, in the same units as the tree
+            canopy raster CRS.
+        apply_func : callable
+            The function to apply to the data, passed to the `apply` method of the
+            group-by object.
+        include_groups : bool, default False
+            If True, apply the function to the groupings in the case that they are
+            columns of the DataFrame (passed as the `include_groups` argument of the
+            `apply` method).
+        apply_func_kwargs : mapping, optional
+            Keyword arguments to pass to `apply_func`.
+
+        Returns
+        -------
+        features : pandas.DataFrame or pandas.Series
+            The computed features for each site (first-level index) and buffer distance
+            (second-level index), as a series (for a single feature) or data frame (for
+            multiple features).
+        """
+        if apply_func_args is None:
+            apply_func_args = []
+        if apply_func_kwargs is None:
+            apply_func_kwargs = {}
+
+        def _apply(site_gb):
+            return site_gb.progress_apply(
+                apply_func,
+                *apply_func_args,
+                include_groups=include_groups,
+                **apply_func_kwargs,
+            )
+
+        return MultiScaleFeatureComputer._compute_vector(
+            data, site_gser, buffer_dists, _apply
+        )
+
     def compute_building_features(
         self,
         site_gser: gpd.GeoSeries,
-        buffer_dists: Iterable[float],
+        buffer_dists: Sequence[float],
         *,
         building_gdf: gpd.GeoDataFrame | utils.PathType | None = None,
     ) -> pd.DataFrame | pd.Series:
@@ -172,7 +319,7 @@ class MultiScaleFeatureComputer(RegionMixin):
         ----------
         site_gser : geopandas.GeoSeries
             Site locations (point geometries) to compute features.
-        buffer_dists : iterable of numeric
+        buffer_dists : list-like of numeric
             The buffer distances to compute features, in the same units as the tree
             canopy raster CRS.
             building_gdf : GeoDataFrame or path-like, optional
@@ -223,57 +370,28 @@ class MultiScaleFeatureComputer(RegionMixin):
         else:
             _compute_features = _compute_building_area
 
-        # TODO: DRY with `_multiscale_raster_feature_df`
-        site_index_name = site_gser.index.name
-        if site_index_name is None:
-            site_index_name = "site_id"
-            site_gser = site_gser.rename_axis(site_index_name)
-
-        return (
-            pd.concat(
-                [
-                    (
-                        site_gser.buffer(buffer_dist)
-                        .to_frame(name="geometry")
-                        .sjoin(building_gdf)
-                        .reset_index(site_index_name)
-                        .groupby(by=site_index_name)
-                        .progress_apply(_compute_features, include_groups=False)
-                        # / (np.pi * buffer_dist**2)
-                    ).assign(buffer_dist=buffer_dist)
-                    for buffer_dist in buffer_dists
-                ],
-                axis="rows",
-            )
-            .fillna(0)
-            .set_index("buffer_dist", append=True)
-            .sort_index()
+        return MultiScaleFeatureComputer.compute_vector_apply(
+            building_gdf, site_gser, buffer_dists, _compute_features
         )
 
+    ## raster
     @staticmethod
-    def _multiscale_raster_stats_feature_ser(
-        src: rio.DatasetReader,
+    def _compute_rasterstats(
+        raster: npt.ArrayLike | utils.PathType,
         site_gser: gpd.GeoSeries,
-        buffer_dists: Iterable[float],
-        stat: str,
-        *,
-        rescale: bool = False,
-        **arr_to_features_kwargs,
-    ) -> pd.Series:
-        """Compute statistics of raster values at multiple buffer distances."""
+        buffer_dists: Sequence[float],
+        **zonal_stats_kwargs: utils.KwargsType,
+    ) -> pd.DataFrame:
+        """Compute multi-scale zonal statistics of raster values using rasterstats."""
         # TODO: add support for multiple stats
         # TODO: support progress bar once related issue is solved:
         # https://github.com/perrygeo/python-rasterstats/issues/303
-        features_ser = (
+        return (
             pd.concat(
                 [
                     pd.DataFrame(
                         rasterstats.zonal_stats(
-                            site_gser.buffer(buffer_dist),
-                            src.read(1),  # assume single band
-                            nodata=src.nodata,
-                            affine=src.transform,
-                            stats=stat,
+                            site_gser.buffer(buffer_dist), raster, **zonal_stats_kwargs
                         ),
                         index=site_gser.index,
                     ).assign(buffer_dist=buffer_dist)
@@ -285,22 +403,12 @@ class MultiScaleFeatureComputer(RegionMixin):
             .sort_index()
         ).fillna(0)
 
-        if rescale:
-            # divide by buffer zone area
-            features_ser = features_ser.groupby("buffer_dist")["sum"].transform(
-                lambda x: x / (np.pi * float(x.name) ** 2)
-            )
-
-        return features_ser
-
     @staticmethod
-    def _multiscale_raster_feature_df(
+    def _compute_mask_reduce(
         src: rio.DatasetReader,
         site_gser: gpd.GeoSeries,
-        buffer_dists: Iterable[float],
+        buffer_dists: Sequence[float],
         arr_to_features: Callable,
-        *,
-        rescale: bool = False,
         **arr_to_features_kwargs,
     ) -> pd.DataFrame:
         """Compute features from a raster at multiple buffer distances.
@@ -336,7 +444,8 @@ class MultiScaleFeatureComputer(RegionMixin):
             site_index_name = "site_id"
             site_gser = site_gser.rename_axis(site_index_name)
 
-        features_df = (
+        # TODO: can this return a series if `arr_to_features` returns a scalar value?
+        return (
             pd.concat(
                 [
                     _compute_site_features(site_geom, **arr_to_features_kwargs).assign(
@@ -353,23 +462,27 @@ class MultiScaleFeatureComputer(RegionMixin):
             .sort_index()
         )
 
-        if rescale:
-            # TODO: improve column -> buffer_dist mapping
-            # for column, buffer_dist in zip(columns, buffer_dists):
-            #     features_df[column] /= buffer_mask_dict[buffer_dist].sum()
-            features_df = features_df.apply(
-                lambda column_ser: column_ser.groupby("buffer_dist").transform(
-                    lambda x: x / (np.pi * float(x.name) ** 2)
+    @staticmethod
+    def _div_by_area(features: pd.DataFrame | pd.Series, stat="sum"):
+        if isinstance(features, pd.DataFrame):
+            if stat is None:
+                return features.apply(
+                    lambda column_ser: column_ser.groupby("buffer_dist").transform(
+                        lambda x: x / (np.pi * float(x.name) ** 2)
+                    )
                 )
-            )
-
-        return features_df
+            else:
+                features = features[stat]
+        # at this point features is a series multi-indexed by site and buffer dist
+        return features.groupby("buffer_dist").transform(
+            lambda x: x / (np.pi * float(x.name) ** 2)
+        )
 
     def compute_tree_features(
         self,
         tree_canopy_filepath: utils.PathType,
         site_gser: gpd.GeoSeries,
-        buffer_dists: Iterable[float],
+        buffer_dists: Sequence[float],
         tree_val: float,
     ) -> pd.Series:
         """Compute tree features.
@@ -380,7 +493,7 @@ class MultiScaleFeatureComputer(RegionMixin):
             The path to the tree canopy raster file.
         site_gser : geopandas.GeoSeries
             Site locations (point geometries) to compute features.
-        buffer_dists : iterable of numeric
+        buffer_dists : list-like of numeric
             The buffer distances to compute features, in the same units as the tree
             canopy raster CRS.
         tree_val : numeric
@@ -396,17 +509,14 @@ class MultiScaleFeatureComputer(RegionMixin):
         tree_canopy_filepath = self._process_raster_filepath(
             tree_canopy_filepath, dst_filename="tree-canopy.tif"
         )
-        with rio.open(tree_canopy_filepath) as src:
-            tree_features_ser = (
-                MultiScaleFeatureComputer._multiscale_raster_stats_feature_ser(
-                    src,
-                    site_gser,
-                    buffer_dists,
-                    "sum",
-                    rescale=True,
-                    target_val=tree_val,
-                )
-            )
+        tree_features_ser = MultiScaleFeatureComputer._compute_rasterstats(
+            tree_canopy_filepath,
+            site_gser,
+            buffer_dists,
+            stats="sum",
+            target_val=tree_val,
+        )
+        tree_features_ser = MultiScaleFeatureComputer._div_by_area(tree_features_ser)
 
         return tree_features_ser.rename("tree_canopy")
 
@@ -443,9 +553,9 @@ class MultiScaleFeatureComputer(RegionMixin):
         self,
         dem_filepath: utils.PathType,
         site_gser: gpd.GeoSeries,
-        buffer_dists: Iterable[float],
+        buffer_dists: Sequence[float],
         *,
-        topo_features: str | Iterable[str] | None = None,
+        topo_features: str | Sequence[str] | None = None,
     ) -> pd.DataFrame:
         """Compute topographic features.
 
@@ -455,10 +565,10 @@ class MultiScaleFeatureComputer(RegionMixin):
             The path to the digital elevation model (DEM) raster file.
         site_gser : geopandas.GeoSeries
             Site locations (point geometries) to compute features.
-        buffer_dists : iterable of numeric
+        buffer_dists : list-like of numeric
             The buffer distances to compute features, in the same units as the tree
             canopy raster CRS.
-        topo_features : str or iterable of str, optional
+        topo_features : str or list-like of str, optional
             The topographic features to compute, have to be among "slope", "northness",
             "tpi" and/or "fac". If None, all features are computed.
 
@@ -543,10 +653,18 @@ class MultiScaleFeatureComputer(RegionMixin):
 
             with warnings.catch_warnings(), np.errstate(divide="ignore"):
                 warnings.simplefilter("ignore", category=RuntimeWarning)
-                return MultiScaleFeatureComputer._multiscale_raster_feature_df(
+                return MultiScaleFeatureComputer._compute_mask_reduce(
                     src,
                     site_gser,
                     buffer_dists,
                     dem_arr_to_topo_features,
-                    rescale=False,
+                )
+
+            with warnings.catch_warnings(), np.errstate(divide="ignore"):
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                return MultiScaleFeatureComputer._compute_mask_reduce(
+                    src,
+                    site_gser,
+                    buffer_dists,
+                    dem_arr_to_topo_features,
                 )
