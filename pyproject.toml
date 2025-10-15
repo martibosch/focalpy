@@ -1,9 +1,9 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9.4,<0.10.0"]
+build-backend = "uv_build"
 
 [project]
-name = "multilandpy"
+name = "focalpy"
 version = "0.1.0"
 description = "Multi-scale landscape features in Python"
 readme = "README.md"
@@ -27,10 +27,9 @@ dependencies = [
   "pyregeon",
   "rasterio",
   "rasterstats",
-  "richdem",
   "shapely",
   "tqdm",
-  "wurlitzer"
+  "xdem"
 ]
 
 [project.license]
@@ -43,10 +42,10 @@ dev = [
   "pip",
   "pre-commit",
   "toml",
-  "tox",
   "twine"
 ]
 doc = [
+  "ipython",
   "myst-parser",
   "nbsphinx",
   "pydata-sphinx-theme",
@@ -61,7 +60,7 @@ test = [
 ]
 
 [project.urls]
-Repository = "https://github.com/martibosch/multilandpy"
+Repository = "https://github.com/martibosch/focalpy"
 
 [tool.codespell]
 skip = "docs/overview.ipynb"
@@ -85,7 +84,33 @@ ignore_errors = true
 omit = ["tests/*", "docs/conf.py"]
 
 [tool.coverage.run]
-source = ["multilandpy"]
+source = ["focalpy"]
+
+[tool.pixi.dependencies]
+python = ">=3.10,<3.14"
+gdal = ">=3"
+
+[tool.pixi.environments]
+dev = ["dev"]
+doc = ["doc"]
+test = ["test"]
+
+[tool.pixi.feature.dev.tasks]
+build = {cmd = "python -m build"}
+check = {cmd = "twine check dist/*", depends-on = ["build"]}
+
+[tool.pixi.feature.doc.tasks]
+build-doc = {cmd = "sphinx-build docs docs/_build"}
+
+[tool.pixi.feature.test.tasks]
+test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
+
+[tool.pixi.pypi-dependencies]
+focalpy = {path = ".", editable = true}
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 
 [tool.ruff]
 line-length = 88
@@ -103,80 +128,20 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-  "multilandpy"
+  "focalpy"
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = [
   "F401"
 ]
-"tests/test_multilandpy.py" = [
+"tests/test_focalpy.py" = [
   "D"
 ]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
-[tool.setuptools.packages.find]
-include = [
-  "multilandpy",
-  "multilandpy.*"
-]
-
-[tool.tox]
-env_list = [
-  "3.10",
-  "3.11",
-  "3.12",
-  "3.13",
-  "lint"
-]
-requires = [
-  "tox>=4.19"
-]
-
-[tool.tox.env.lint]
-commands = [
-  "python -m build",
-  "sphinx-build docs docs/_build",
-  "twine check dist/*"
-]
-extras = [
-  "dev",
-  "doc",
-  "test"
-]
-whitelist_externals = [
-  "build",
-  "sphinx-build",
-  "twine"
-]
-
-[tool.tox.env_run_base]
-commands = [
-  ["pytest", "-s", "--cov=multilandpy", "--cov-report=xml", "tests"]
-]
-conda_deps = [
-  "gdal>=3.3"
-]
-extras = [
-  "test"
-]
-whitelist_externals = [
-  "pytest"
-]
-
-[tool.tox.gh.python]
-"3.10" = [
-  "3.10"
-]
-"3.11" = [
-  "3.11"
-]
-"3.12" = [
-  "3.12"
-]
-"3.13" = [
-  "3.13",
-  "lint"
-]
+[tool.uv.build-backend]
+module-name = "focalpy"
+module-root = ""

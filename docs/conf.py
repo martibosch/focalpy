@@ -2,13 +2,12 @@
 
 import os
 import sys
+from importlib import metadata
 
-import pkg_resources
-
-project = "multilandpy"
+project = "focalpy"
 author = "Martí Bosch"
 
-release = pkg_resources.get_distribution("multilandpy").version
+release = metadata.version("focalpy")
 version = ".".join(release.split(".")[:2])
 
 extensions = [
@@ -21,7 +20,7 @@ extensions = [
 autodoc_typehints = "description"
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
-    "github_url": "https://github.com/martibosch/multilandpy",
+    "github_url": "https://github.com/martibosch/focalpy",
 }
 
 # add module to path
