@@ -1,18 +1,16 @@
-[![PyPI version fury.io](https://badge.fury.io/py/multilandpy.svg)](https://pypi.python.org/pypi/multilandpy/)
-[![Documentation Status](https://readthedocs.org/projects/multilandpy/badge/?version=latest)](https://multilandpy.readthedocs.io/en/latest/?badge=latest)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/martibosch/multilandpy/main.svg)](https://results.pre-commit.ci/latest/github/martibosch/multilandpy/main)
-[![codecov](https://codecov.io/gh/martibosch/multilandpy/branch/main/graph/badge.svg?token=hKoSSRn58a)](https://codecov.io/gh/martibosch/multilandpy)
-[![GitHub license](https://img.shields.io/github/license/martibosch/multilandpy.svg)](https://github.com/martibosch/multilandpy/blob/main/LICENSE)
+[![PyPI version fury.io](https://badge.fury.io/py/focalpy.svg)](https://pypi.python.org/pypi/focalpy/)
+[![Documentation Status](https://readthedocs.org/projects/focalpy/badge/?version=latest)](https://focalpy.readthedocs.io/en/latest/?badge=latest)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/martibosch/focalpy/main.svg)](https://results.pre-commit.ci/latest/github/martibosch/focalpy/main)
+[![codecov](https://codecov.io/gh/martibosch/focalpy/branch/main/graph/badge.svg?token=hKoSSRn58a)](https://codecov.io/gh/martibosch/focalpy)
+[![GitHub license](https://img.shields.io/github/license/martibosch/focalpy.svg)](https://github.com/martibosch/focalpy/blob/main/LICENSE)
 
-# multilandpy
+# focalpy
 
-Computing multi-scale landscape features for vector and raster layers (terrain/topographic indices, vegetation, building areas and volumes...) in Python.
-
-> *multilandpy* is an analogy to the [multilandr](https://github.com/phuais/multilandR) package [1] to compute multi-scale landscape metrics in R. However, instead of lansdcape metrics<sup>[1](#pylandstats)</sup>, multilandpy computes generic mutli-scale landscape features for vector and raster layers, such as topographic features, tree canopy cover as well as building areas and volumes.
+Toolkit for focal site multi-scale studies in Python.
 
 Example application to compute the proportion of tree canopy around (with multiple buffer radii) weather stations in Zurich, Switzerland:
 
-![stations-tree-canopy](https://github.com/martibosch/multilandpy/raw/main/figures/stations-tree-canopy.png)
+![stations-tree-canopy](https://github.com/martibosch/focalpy/raw/main/figures/stations-tree-canopy.png)
 
 *(C) OpenStreetMap contributors, tiles style by Humanitarian OpenStreetMap Team hosted by OpenStreetMap France*
 
@@ -23,7 +21,7 @@ Start by instantiating a `MultiScaleFeatureComputer` for [a given region of inte
 ```python
 import swisstopopy
 
-import multilandpy
+import focalpy
 
 # parameters
 region = "EPFL"
@@ -32,7 +30,7 @@ buffer_dists = [10, 25, 50, 100]
 grid_res = 200
 
 # instantiate the multi-scale feature computer
-msfc = multilandpy.MultiScaleFeatureComputer(region=region, crs=crs)
+msfc = focalpy.MultiScaleFeatureComputer(region=region, crs=crs)
 
 # generate a regular grid of points/sites within the region
 site_gser = msfc.generate_regular_grid_gser(grid_res, geometry_type="point")
@@ -74,32 +72,27 @@ features_df.head()
 |              |         100 | 250923.879244 |    0.043386 | 0.073637 |  0.006363 | -0.716217 |
 |            1 |          10 |    627.309698 |    0.000000 | 0.095521 |  0.228504 |  0.080963 |
 
-See the [overview notebook](https://multilandpy.readthedocs.io/en/latest/overview.html) and the [API documentation](https://multilandpy.readthedocs.io/en/latest/api.html) for more details on the features of multilandpy.
+See the [overview notebook](https://focalpy.readthedocs.io/en/latest/overview.html) and the [API documentation](https://focalpy.readthedocs.io/en/latest/api.html) for more details on the features of focalpy.
 
 ## Installation
 
-Like many other geospatial Python packages, multilandpy requires many base C libraries that cannot be installed with pip. Accordingly, the best way to install multilandpy is to use conda/mamba, i.e., in a given conda environment, run:
+Like many other geospatial Python packages, focalpy requires many base C libraries that cannot be installed with pip. Accordingly, the best way to install focalpy is to use conda/mamba, i.e., in a given conda environment, run:
 
 ```bash
 # or mamba install -c conda-forge geopandas
 conda install -c conda-forge geopandas
 ```
 
-Within the same conda environment, you can then install multilandpy using pip:
+Within the same conda environment, you can then install focalpy using pip:
 
 ```bash
-pip install https://github.com/martibosch/multilandpy/archive/main.zip
+pip install https://github.com/martibosch/focalpy/archive/main.zip
 ```
 
 ## Acknowledgements
 
 - This package was created with the [martibosch/cookiecutter-geopy-package](https://github.com/martibosch/cookiecutter-geopy-package) project template.
 
-## Footnotes
-
-<a name="pylandstats">1</a>. You can use the [`MultiScaleAnalysis`](https://github.com/martibosch/pylandstats-notebooks/blob/main/notebooks/06-multiscale-analysis.ipynb) class of [pylandstats](https://github.com/martibosch/pylandstats) [2] to compute multi-scale landscape metrics in Python.
-
 ## References
 
 1. Huais, P. Y. (2024). Multilandr: An r package for multi-scale landscape analysis. Landscape Ecology, 39(8), 140.
-1. Bosch, M. (2019). PyLandStats: An open-source Pythonic library to compute landscape metrics. PloS one, 14(12), e0225734.

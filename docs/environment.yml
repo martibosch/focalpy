@@ -1,4 +1,4 @@
-name: multilandpy
+name: focalpy
 channels:
   - conda-forge
 dependencies:
