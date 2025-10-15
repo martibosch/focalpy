@@ -1,7 +1,7 @@
 # Usage
 
-To use multilandpy in a project
+To use focalpy in a project
 
 ```python
-import multilandpy
+import focalpy
 ```

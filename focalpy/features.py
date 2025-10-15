@@ -13,12 +13,11 @@ import osmnx as ox
 import pandas as pd
 import rasterio as rio
 import rasterstats
+from multilandpy import topo, utils
 from osgeo import gdal
 from pyregeon import CRSType, RegionMixin, RegionType
 from rasterio import mask, transform
 from tqdm import tqdm
-
-from multilandpy import topo, utils
 
 # to use `progress_apply`
 tqdm.pandas()

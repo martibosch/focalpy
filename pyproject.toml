@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "multilandpy"
+name = "focalpy"
 version = "0.1.0"
 description = "Multi-scale landscape features in Python"
 readme = "README.md"
@@ -61,7 +61,7 @@ test = [
 ]
 
 [project.urls]
-Repository = "https://github.com/martibosch/multilandpy"
+Repository = "https://github.com/martibosch/focalpy"
 
 [tool.codespell]
 skip = "docs/overview.ipynb"
@@ -85,7 +85,7 @@ ignore_errors = true
 omit = ["tests/*", "docs/conf.py"]
 
 [tool.coverage.run]
-source = ["multilandpy"]
+source = ["focalpy"]
 
 [tool.ruff]
 line-length = 88
@@ -103,14 +103,14 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-  "multilandpy"
+  "focalpy"
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = [
   "F401"
 ]
-"tests/test_multilandpy.py" = [
+"tests/test_focalpy.py" = [
   "D"
 ]
 
@@ -119,8 +119,8 @@ convention = "numpy"
 
 [tool.setuptools.packages.find]
 include = [
-  "multilandpy",
-  "multilandpy.*"
+  "focalpy",
+  "focalpy.*"
 ]
 
 [tool.tox]
@@ -154,7 +154,7 @@ whitelist_externals = [
 
 [tool.tox.env_run_base]
 commands = [
-  ["pytest", "-s", "--cov=multilandpy", "--cov-report=xml", "tests"]
+  ["pytest", "-s", "--cov=focalpy", "--cov-report=xml", "tests"]
 ]
 conda_deps = [
   "gdal>=3.3"
