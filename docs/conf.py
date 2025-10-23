@@ -2,13 +2,12 @@
 
 import os
 import sys
-
-import pkg_resources
+from importlib import metadata
 
 project = "focalpy"
 author = "Martí Bosch"
 
-release = pkg_resources.get_distribution("focalpy").version
+release = metadata.version("focalpy")
 version = ".".join(release.split(".")[:2])
 
 extensions = [
@@ -19,7 +18,7 @@ extensions = [
 ]
 
 autodoc_typehints = "description"
-html_theme = "pydata_sphinx_theme"
+html_theme = "furo"
 html_theme_options = {
     "github_url": "https://github.com/martibosch/focalpy",
 }
