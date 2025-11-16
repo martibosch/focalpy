@@ -54,8 +54,10 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
+        args: ['--ignore-regex=^\s*"image\/png":\s.*']
         additional_dependencies:
           - tomli
+        exclude: pixi.lock
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.2
