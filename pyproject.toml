@@ -2,6 +2,9 @@
 requires = ["uv_build>=0.9.4,<0.10.0"]
 build-backend = "uv_build"
 
+[dependency-groups]
+user-guide = ["swisstopopy>=0.1.0,<0.2"]
+
 [project]
 name = "focalpy"
 version = "0.1.0"
@@ -50,6 +53,8 @@ doc = [
   "nbsphinx",
   "pydata-sphinx-theme",
   "sphinx",
+  "sphinx-copybutton",
+  "sphinxcontrib-bibtex",
   "sphinxemoji"
 ]
 test = [
@@ -57,6 +62,20 @@ test = [
   "pytest",
   "pytest-cov",
   "ruff"
+]
+user-guide = [
+  "contextily",
+  "ipywidgets",
+  "meteora",
+  "momepy",
+  "osmnx",
+  "pdal",
+  "pylandstats",
+  "seaborn",
+  "swisslandstats-geopy",
+  # "swisstopopy",
+  "xdem",
+  "zenodo-client>=0.3.6,<0.4"
 ]
 
 [project.urls]
@@ -88,12 +107,14 @@ source = ["focalpy"]
 
 [tool.pixi.dependencies]
 python = ">=3.10,<3.14"
+ipykernel = ">=7.1.0,<8"
 gdal = ">=3"
 
 [tool.pixi.environments]
 dev = ["dev"]
 doc = ["doc"]
 test = ["test"]
+user-guide = ["user-guide"]
 
 [tool.pixi.feature.dev.tasks]
 build = {cmd = "python -m build"}
@@ -105,12 +126,18 @@ build-doc = {cmd = "sphinx-build docs docs/_build"}
 [tool.pixi.feature.test.tasks]
 test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
 
+[tool.pixi.feature.user-guide.dependencies]
+pdal = ">=2.9.2,<3"
+
 [tool.pixi.pypi-dependencies]
 focalpy = {path = ".", editable = true}
 
 [tool.pixi.workspace]
+authors = ["Martí Bosch <marti.bosch@protonmail.com>"]
 channels = ["conda-forge"]
+name = "focalpy"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+version = "0.1.0"
 
 [tool.ruff]
 line-length = 88
