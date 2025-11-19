@@ -128,6 +128,9 @@ test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
 
 [tool.pixi.feature.user-guide.dependencies]
 pdal = ">=2.9.2,<3"
+folium = ">=0.20.0,<0.21"
+mapclassify = ">=2.10.0,<3"
+statsmodels = ">=0.14.5,<0.15"
 
 [tool.pixi.pypi-dependencies]
 focalpy = {path = ".", editable = true}
@@ -160,7 +163,8 @@ known-first-party = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = [
-  "F401"
+  "F401",
+  "F403"
 ]
 "tests/test_focalpy.py" = [
   "D"

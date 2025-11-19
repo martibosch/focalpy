@@ -1,11 +1,7 @@
 """Settings."""
 
-import logging as lg
+from sklearn import decomposition, preprocessing
 
-# logging
-LOG_CONSOLE = False
-LOG_FILE = False
-LOG_FILENAME = "multilandpy"
-LOG_LEVEL = lg.INFO
-LOG_NAME = "multilandpy"
-LOGS_FOLDER = "./logs"
+# focal analysis
+DEFAULT_PREPROCESSOR = preprocessing.StandardScaler
+DEFAULT_DECOMPOSER = decomposition.PCA
