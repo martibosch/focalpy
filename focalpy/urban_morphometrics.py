@@ -38,15 +38,15 @@ def compute_urban_morphometrics(
         more details on the suitable metrics).
     gb_reduce_args : list-like, optional
         Additional positional arguments to pass to the group-by reduce-like method.
-    momepy_metrics_args_dict, momepy_metrics_kwargs_dict : dict, optional
+    momepy_metrics_args_dict, momepy_metrics_kwargs_dict : mapping, optional
         Dictionaries mapping each metric function name to the respective additional
         positional and keyword arguments.
     gb_reduce_method : str, default "agg"
         The group-by reduce-like method to apply to the data. This can be any method
         available on the `pandas.core.groupby.DataFrameGroupBy` object, e.g.,
         "sum", "mean", "median", "min", "max", or "agg".
-    gb_reduce_kwargs : mapping, optional
-        Additional keyword arguments to pass to the group-by reduce-like method.
+    **gb_reduce_kwargs : mapping, optional
+        Keyword arguments to pass to the group-by reduce-like method.
 
     Returns
     -------
@@ -102,5 +102,6 @@ def compute_urban_morphometrics(
         sites,
         buffer_dists,
         *gb_reduce_args,
+        gb_reduce_method=gb_reduce_method,
         **gb_reduce_kwargs,
     )

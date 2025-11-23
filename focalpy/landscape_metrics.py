@@ -53,7 +53,7 @@ def compute_landscape_metrics(
         `None` (default), the value will be taken from
         `pylandstats.settings.CLASS_METRICS_DF_FILLNA`. Passed as homonymous keyword
         argument to `pylandstats.SpatialSignatureAnalysis`.
-    class_metrics_kwargs, landscape_metrics_kwargs : dict, optional
+    class_metrics_kwargs, landscape_metrics_kwargs : mapping, optional
         Dictionary mapping the keyword arguments (values) that should be passed to each
         metric method (key) for the class and landscape-level metrics respectively. For
         instance, to exclude the boundary from the computation of `total_edge`,

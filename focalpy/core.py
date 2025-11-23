@@ -78,8 +78,8 @@ def compute_vector_features(
         The group-by reduce-like method to apply to the data. This can be any method
         available on the `pandas.core.groupby.DataFrameGroupBy` object, e.g.,
         "sum", "mean", "median", "min", "max", or "agg".
-    gb_reduce_kwargs : mapping, optional
-        Additional keyword arguments to pass to the group-by reduce-like method.
+    **gb_reduce_kwargs : mapping, optional
+        Keyword arguments to pass to the group-by reduce-like method.
 
     Returns
     -------
@@ -176,8 +176,8 @@ def compute_raster_features(
         The buffer distances to compute features, in the same units as the raster CRS.
     affine: `affine.Affine`, optional
         Affine transform. Ignored if `raster` is a path-like object.
-    zonal_stats_kwargs : mapping, optional
-        Additional keyword arguments to pass to `rasterstats.zonal_stats`.
+    **zonal_stats_kwargs : mapping, optional
+        Keyword arguments to pass to `rasterstats.zonal_stats`.
 
     Returns
     -------
@@ -397,22 +397,22 @@ class FocalAnalysis:
             scikit-learn like transformer that implements the `fit`, `transform` and
             `fit_transform` methods and with the `components_` and `n_components`
             attributes. If no value is provided, the default value set in
-            `settings.DEFAULT_DECOMPOSER` will be taken.
+            `settings.FEATURE_DECOMPOSER` will be taken.
         preprocessor : class, optional
             A class that implements the preprocessing algorithm. It can be any
             scikit-learn like transformer that implements the `fit_transform` method.
             If no value is provided, the default value set in
-            `settings.DEFAULT_PREPROCESSOR` will be taken.
-        preprocessor_kwargs : dict, optional
+            `settings.FEATURE_PREPROCESSOR` will be taken.
+        preprocessor_kwargs : mapping, optional
             Keyword arguments to be passed to the initializationof `preprocessor`.
         imputer : class, optional
             A class that implements the imputation algorithm. It can be any scikit-learn
             like transformer that implements the `fit_transform` method. If no value is
             provided, no imputation will be performed.
-        imputer_kwargs : dict, optional
+        imputer_kwargs : mapping, optional
             Keyword arguments to be passed to the initialization of `imputer`. Ignored
             if `imputer` is `None`.
-        **decomposer_kwargs : dict, optional
+        **decomposer_kwargs : mapping, optional
             Keyword arguments to be passed to the initialization of `decomposer`.
 
         Returns
@@ -427,7 +427,7 @@ class FocalAnalysis:
         X = self.features_df.copy()
 
         if preprocessor is None:
-            preprocessor = settings.DEFAULT_PREPROCESSOR
+            preprocessor = settings.FEATURE_PREPROCESSOR
 
         if preprocessor:  # user can provide `preprocessor=False` to skip this step
             if preprocessor_kwargs is None:
@@ -440,7 +440,7 @@ class FocalAnalysis:
             X = _fit_transform(X, imputer, **imputer_kwargs)
 
         if decomposer is None:
-            decomposer = settings.DEFAULT_DECOMPOSER
+            decomposer = settings.FEATURE_DECOMPOSER
         try:
             # try if the model accepts nan values
             decompose_model = decomposer(**decomposer_kwargs).fit(X)
@@ -474,7 +474,7 @@ class FocalAnalysis:
         index : list-like, optional
             Index names for the metrics. If no value is provided, the column names of
             `metrics_df` will be used.
-        **df_kwargs : dict, optional
+        **df_kwargs : mapping, optional
             Keyword arguments to be passed to the initialization of `pandas.DataFrame`
 
         Returns
@@ -518,7 +518,7 @@ class FocalAnalysis:
             "{metric}_{class_val}".
         ax : matplotlib.axes.Axes, optional
             Axes object to draw the plot onto, otherwise create a new figure.
-        scatterplot_kwargs : dict, optional
+        **scatterplot_kwargs : mapping, optional
             Keyword arguments to be passed to `seaborn.scatterplot`.
 
         Returns

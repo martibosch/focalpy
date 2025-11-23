@@ -109,6 +109,9 @@ source = ["focalpy"]
 python = ">=3.10,<3.14"
 ipykernel = ">=7.1.0,<8"
 gdal = ">=3"
+pyogrio = ">=0.11.1,<0.12"
+pyproj = ">=3.7.2,<4"
+statsmodels = ">=0.14.5,<0.15"
 
 [tool.pixi.environments]
 dev = ["dev"]
@@ -130,7 +133,6 @@ test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
 pdal = ">=2.9.2,<3"
 folium = ">=0.20.0,<0.21"
 mapclassify = ">=2.10.0,<3"
-statsmodels = ">=0.14.5,<0.15"
 
 [tool.pixi.pypi-dependencies]
 focalpy = {path = ".", editable = true}

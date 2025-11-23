@@ -43,8 +43,8 @@ def compute_terrain_attributes(
         The statistics to compute on the terrain attributes. Can be any statistic
         available in `geoutils.Raster.get_stats` or a custom callable function. If
         `None`, all available statistics from `geoutils` are computed.
-    terrain_attributes_kwargs : mapping, optional
-        Additional keyword arguments to pass to `xdem.DEM.get_terrain_attribute`.
+    **terrain_attributes_kwargs : mapping, optional
+        Keyword arguments to pass to `xdem.DEM.get_terrain_attribute`.
 
     Returns
     -------
