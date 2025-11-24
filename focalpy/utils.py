@@ -9,3 +9,5 @@ from collections.abc import Mapping
 PathType = str | os.PathLike
 # type hint for keyword arguments
 KwargsType = Mapping | None
+# type hint for fillna arguments
+FillnaType = float | Mapping | bool | None

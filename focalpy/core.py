@@ -46,7 +46,6 @@ def _compute_features(
             feature_dfs,
             axis="rows",
         )
-        .fillna(0)
         .set_index("buffer_dist", append=True)
         .sort_index()
     )
@@ -59,6 +58,7 @@ def compute_vector_features(
     buffer_dists: float | Sequence[float],
     *gb_reduce_args: Sequence,
     gb_reduce_method: str = "agg",
+    fillna: utils.FillnaType = None,
     **gb_reduce_kwargs: utils.KwargsType,
 ) -> pd.DataFrame:
     """Compute multi-scale vector aggregation features.
@@ -78,6 +78,10 @@ def compute_vector_features(
         The group-by reduce-like method to apply to the data. This can be any method
         available on the `pandas.core.groupby.DataFrameGroupBy` object, e.g.,
         "sum", "mean", "median", "min", "max", or "agg".
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.VECTOR_FEATURES_FILLNA` is used.
     **gb_reduce_kwargs : mapping, optional
         Keyword arguments to pass to the group-by reduce-like method.
 
@@ -104,16 +108,22 @@ def compute_vector_features(
         sites = sites.geometry
 
     def _gb_reduce(buffers):
-        return getattr(
-            buffers.to_frame(name="geometry")
-            .sjoin(gdf)
-            # remove right index resulting column in the sjoin data frame
-            # see https://github.com/geopandas/geopandas/issues/498
-            .drop(columns=["geometry", gdf.index.name], errors="ignore")
-            .reset_index(sites.index.name)
-            .groupby(by=sites.index.name),
-            gb_reduce_method,
-        )(*gb_reduce_args, **gb_reduce_kwargs)
+        return (
+            getattr(
+                buffers.to_frame(name="geometry")
+                .sjoin(gdf)
+                # remove right index resulting column in the sjoin data frame
+                # see https://github.com/geopandas/geopandas/issues/498
+                .drop(columns=["geometry", gdf.index.name], errors="ignore")
+                .reset_index(sites.index.name)
+                .groupby(by=sites.index.name),
+                gb_reduce_method,
+            )(*gb_reduce_args, **gb_reduce_kwargs)
+            # ACHTUNG: use `reindex` to ensure that all sites with no overlapping
+            # geometries are included too (which will have NaN values that we can
+            # subsequently manage with `fillna`)
+            .reindex(sites.index)
+        )
 
     if gb_reduce_method != "agg":
 
@@ -151,6 +161,11 @@ def compute_vector_features(
                     columns=lambda col: f"{col}_{gb_reduce_func_arg}"
                 )
 
+    if fillna is None:
+        fillna = settings.VECTOR_FEATURES_FILLNA
+    if fillna == 0 or fillna:
+        vector_features_df = vector_features_df.fillna(fillna)
+
     return vector_features_df
 
 
@@ -161,6 +176,7 @@ def compute_raster_features(
     buffer_dists: float | Sequence[float],
     *,
     affine: affine.Affine | None = None,
+    fillna: utils.FillnaType = None,
     **zonal_stats_kwargs: utils.KwargsType,
 ):
     """Compute multi-scale raster statistics features.
@@ -176,6 +192,10 @@ def compute_raster_features(
         The buffer distances to compute features, in the same units as the raster CRS.
     affine: `affine.Affine`, optional
         Affine transform. Ignored if `raster` is a path-like object.
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.RASTER_FEATURES_FILLNA` is used.
     **zonal_stats_kwargs : mapping, optional
         Keyword arguments to pass to `rasterstats.zonal_stats`.
 
@@ -191,7 +211,7 @@ def compute_raster_features(
             rasterstats.zonal_stats(buffers, *args, **kwargs), index=buffers.index
         )
 
-    return _compute_features(
+    raster_features_df = _compute_features(
         raster,
         sites,
         buffer_dists,
@@ -202,6 +222,10 @@ def compute_raster_features(
         **zonal_stats_kwargs,
     )
 
+    if fillna is None:
+        fillna = settings.RASTER_FEATURES_FILLNA
+    if fillna == 0 or fillna:
+        raster_features_df = raster_features_df.fillna(fillna)
 
 def _compute_features_df(
     sites,
@@ -242,6 +266,7 @@ def _compute_features_df(
         for feature_col, buffer_dist in features_df.columns.values
     ]
     return features_df
+    return raster_features_df
 
 
 def _fit_transform(X, transformer, **transformer_kwargs):
