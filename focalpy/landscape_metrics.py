@@ -81,7 +81,7 @@ def compute_landscape_metrics(
             class_metrics_fillna=class_metrics_fillna,
             class_metrics_kwargs=class_metrics_kwargs,
             landscape_metrics_kwargs=landscape_metrics_kwargs,
-        ).metrics_df
+        ).metrics_df.fillna(0)
 
     return core._compute_features(
         landscape_filepath, sites, buffer_dists, _compute_landscape_metrics

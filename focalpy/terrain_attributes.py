@@ -8,6 +8,7 @@ import pandas as pd
 import rasterio as rio
 import xdem
 from rasterio import mask
+from tqdm.auto import tqdm
 
 from focalpy import core, utils
 
@@ -100,8 +101,12 @@ def compute_terrain_attributes(
     with rio.open(dem_filepath) as src:
 
         def _compute_terrain_attributes(buffers):
-            return pd.DataFrame(
-                [
+            buffer_attributes = []
+            for buffer_dem_arr, buffer_transform in tqdm(
+                [mask.mask(src, [buffer_geom], crop=True) for buffer_geom in buffers],
+                total=len(buffers),
+            ):
+                buffer_attributes.append(
                     _get_stats(
                         xdem.DEM.from_array(
                             np.where(
@@ -115,11 +120,10 @@ def compute_terrain_attributes(
                         ),
                         terrain_attributes,
                     )
-                    for buffer_dem_arr, buffer_transform in [
-                        mask.mask(src, [buffer_geom], crop=True)
-                        for buffer_geom in buffers
-                    ]
-                ],
+                )
+
+            return pd.DataFrame(
+                buffer_attributes,
                 index=buffers.index,
             )
 

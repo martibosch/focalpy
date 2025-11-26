@@ -133,6 +133,7 @@ test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
 pdal = ">=2.9.2,<3"
 folium = ">=0.20.0,<0.21"
 mapclassify = ">=2.10.0,<3"
+scikit-learn = ">=1.7.2,<2"
 
 [tool.pixi.pypi-dependencies]
 focalpy = {path = ".", editable = true}
