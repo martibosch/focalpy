@@ -76,6 +76,9 @@ sys.path.insert(0, os.path.abspath(".."))
 
 # do NOT execute notebooks
 nbsphinx_execute = "never"
+# do NOT add ".ipynb" to source suffixes
+# see https://github.com/spatialaudio/nbsphinx/issues/310
+source_suffix = [".md", ".rst"]
 
 # theme
 html_theme = "pydata_sphinx_theme"

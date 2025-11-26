@@ -8,71 +8,136 @@
 
 Toolkit for focal site multi-scale studies in Python.
 
-Example application to compute the proportion of tree canopy around (with multiple buffer radii) weather stations in Zurich, Switzerland:
-
 ![stations-tree-canopy](https://github.com/martibosch/focalpy/raw/main/figures/stations-tree-canopy.png)
 
 *(C) OpenStreetMap contributors, tiles style by Humanitarian OpenStreetMap Team hosted by OpenStreetMap France*
 
 ## Overview
 
-Start by instantiating a `MultiScaleFeatureComputer` for [a given region of interest](https://github.com/martibosch/pyregeon). Then, given a list of site locations, you can compute urban features at multiple scales, i.e., based on the landscape surrounding each site for multiple buffer radii:
+Compute multi-scale spatial predictors:
 
 ```python
-import swisstopopy
+import contextily as cx
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from sklearn import ensemble
 
 import focalpy
 
-# parameters
-region = "EPFL"
-crs = "epsg:2056"
-buffer_dists = [10, 25, 50, 100]
-grid_res = 200
+species_richness_filepath = "data/bird-richness.gpkg"
+buildings_gdf_filepath = "data/buildings.gpkg"
+tree_canopy_filepath = "data/tree-canopy.tif"
 
-# instantiate the multi-scale feature computer
-msfc = focalpy.MultiScaleFeatureComputer(region=region, crs=crs)
+buffer_dists = [100, 250, 500]
 
-# generate a regular grid of points/sites within the region
-site_gser = msfc.generate_regular_grid_gser(grid_res, geometry_type="point")
+species_gdf = gpd.read_file(species_richness_filepath)
+y_col = "n.species"  # species richness
 
-# get a tree canopy raster from swisstopo data
-dst_filepath = "tree-canopy.tif"
-swisstopopy.get_tree_canopy_raster(region, dst_filepath)
-tree_val = 1  # pixel value representing a tree in the canopy raster
-
-# generate a DEM raster from swisstopo data
-dem_filepath = "dem.tif"
-swisstopopy.get_dem_raster(region, dem_filepath)
-
-# compute multi-scale features
-
-# building areas from OpenStreetMap buildings (via osmnx)
-features_df = pd.concat(
+fa = focalpy.FocalAnalysis(
+    [buildings_gdf_filepath, tree_canopy_filepath],
+    species_gdf,
+    buffer_dists,
     [
-        msfc.compute_building_features(site_gser, buffer_dists),
-        msfc.compute_tree_features(
-            tree_canopy_filepath, site_gser, buffer_dists, tree_val
-        ),
-        msfc.compute_topo_features_df(
-            dem_filepath,
-            site_gser,
-            buffer_dists,
-        ),
+        "compute_vector_features",
+        "compute_raster_features",
     ],
-    axis="columns",
+    feature_col_prefixes=["building", "tree"],
+    feature_methods_args={
+        "compute_vector_features": [{"area": "sum"}],
+    },
+    feature_methods_kwargs={
+        "compute_raster_features": {"stats": "sum"},
+    },
 )
-features_df.head()
+fa.features_df.head()
 ```
 
-| grid_cell_id | buffer_dist | building_area | tree_canopy |    slope | northness |       tpi |
-| -----------: | ----------: | ------------: | ----------: | -------: | --------: | --------: |
-|            0 |          10 |    313.654849 |    0.000000 | 0.020963 |  0.180932 | -0.006561 |
-|              |          25 |   3920.685613 |    0.014260 | 0.052408 |  0.023872 |  0.036682 |
-|              |          50 |  31365.484905 |    0.047746 | 0.070575 | -0.006432 | -0.075104 |
-|              |         100 | 250923.879244 |    0.043386 | 0.073637 |  0.006363 | -0.716217 |
-|            1 |          10 |    627.309698 |    0.000000 | 0.095521 |  0.228504 |  0.080963 |
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>building_area_sum_100</th>
+      <th>building_area_sum_250</th>
+      <th>building_area_sum_500</th>
+      <th>tree_sum_100</th>
+      <th>tree_sum_250</th>
+      <th>tree_sum_500</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>13069.227511</td>
+      <td>60218.251616</td>
+      <td>207368.012055</td>
+      <td>2016.0</td>
+      <td>14875.0</td>
+      <td>61452.0</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>7439.635337</td>
+      <td>41645.546860</td>
+      <td>131432.855040</td>
+      <td>1331.0</td>
+      <td>15760.0</td>
+      <td>84520.0</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>8962.495280</td>
+      <td>54251.129360</td>
+      <td>146157.281494</td>
+      <td>2385.0</td>
+      <td>16725.0</td>
+      <td>79704.0</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>8001.653873</td>
+      <td>29735.393494</td>
+      <td>102803.559740</td>
+      <td>2512.0</td>
+      <td>22892.0</td>
+      <td>95945.0</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>10447.531020</td>
+      <td>39405.263870</td>
+      <td>110922.947475</td>
+      <td>3886.0</td>
+      <td>19860.0</td>
+      <td>99111.0</td>
+    </tr>
+  </tbody>
+</table>
 
-See the [overview notebook](https://focalpy.readthedocs.io/en/latest/overview.html) and the [API documentation](https://focalpy.readthedocs.io/en/latest/api.html) for more details on the features of focalpy.
+```
+# target area (for region-wide prediction/extrapolation)
+study_area_filepath = "data/study-area.gpkg"
+grid_res = 500
+
+# train a model and spatially extrapolate it
+model = ensemble.GradientBoostingRegressor().fit(fa.features_df, species_gdf[y_col])
+pred_da = fa.predict_raster(model, study_area_filepath, grid_res, pred_label=y_col)
+
+# plot the field data and predicted raster
+fig, ax = plt.subplots()
+cmap = "BuGn"
+vmin = min(pred_da.min().item(), species_gdf[y_col].min())
+vmax = max(pred_da.max().item(), species_gdf[y_col].max())
+pred_da.plot(ax=ax, alpha=0.7, vmin=vmin, vmax=vmax, cmap=cmap)
+species_gdf.plot(y_col, ax=ax, edgecolor="k", vmin=vmin, vmax=vmax, cmap=cmap)
+ax.set_axis_off()
+cx.add_basemap(ax, crs=species_gdf.crs, attribution=False)
+```
+
+![pred-raster](https://github.com/martibosch/focalpy/raw/main/figures/pred-raster.png)
+
+*(C) OpenStreetMap contributors, tiles style by Humanitarian OpenStreetMap Team hosted by OpenStreetMap France*
+
+See the [user guide](https://focalpy.readthedocs.io/en/latest/user-guide/introduction.html) and the [API documentation](https://focalpy.readthedocs.io/en/latest/api.html) for more details on the features of focalpy.
 
 ## Installation
 

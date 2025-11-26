@@ -1,17 +1,16 @@
 """Core."""
 
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import affine
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pyregeon
 import rasterio as rio
 import rasterstats
-import seaborn as sns
+from sklearn.base import BaseEstimator
 
 import focalpy
 from focalpy import settings, utils
@@ -138,6 +137,7 @@ def compute_vector_features(
     vector_features_df = _compute_features(
         data, sites, buffer_dists, buffers_to_features
     )
+
     # process column names
     if isinstance(vector_features_df.columns, pd.MultiIndex):
         # multi-index columns (feature, agg) to single level by joining with "_"
@@ -227,59 +227,21 @@ def compute_raster_features(
     if fillna == 0 or fillna:
         raster_features_df = raster_features_df.fillna(fillna)
 
-def _compute_features_df(
-    sites,
-    data_dict,
-    buffer_dists_dict,
-    feature_method_dict,
-    feature_col_prefix_dict,
-    feature_methods_args_dict,
-    feature_methods_kwargs_dict,
-):
-    # small utility
-    def _prefix_rename_dict(feature):
-        feature_col_prefix = feature_col_prefix_dict.get(feature, "")
-        if feature_col_prefix:
-            return lambda feature_col: f"{feature_col_prefix}_{feature_col}"
-        else:
-            return {}
-
-    # ACHTUNG: we need to unstack each `feature_df` individually because each feature
-    # may have different scales/buffer distances
-    features_df = pd.concat(
-        [
-            feature_method(
-                data_dict[feature_method],
-                sites,
-                buffer_dists_dict[feature_method],
-                *feature_methods_args_dict.get(feature, []),
-                **feature_methods_kwargs_dict.get(feature, {}),
-            )
-            .rename(columns=_prefix_rename_dict(feature_method))
-            .unstack(level="buffer_dist")
-            for feature, feature_method in feature_method_dict.items()
-        ],
-        axis="columns",
-    )
-    features_df.columns = [
-        f"{feature_col}_{buffer_dist}"
-        for feature_col, buffer_dist in features_df.columns.values
-    ]
-    return features_df
     return raster_features_df
 
 
 def _fit_transform(X, transformer, **transformer_kwargs):
+    _transformer = transformer(**transformer_kwargs).fit(X)
     # ACHTUNG: do not modify X in place to avoid side effects
-    _X = transformer(**transformer_kwargs).fit_transform(X)
+    _X = _transformer.transform(X)
     if isinstance(X, pd.DataFrame):
         _X = pd.DataFrame(_X, index=X.index, columns=X.columns)
 
-    return _X
+    return _X, _transformer
 
 
 class FocalAnalysis:
-    """Multi-scale feature computer.
+    """Focal analysis.
 
     Parameters
     ----------
@@ -305,7 +267,7 @@ class FocalAnalysis:
         #     sites = sites.rename_axis(site_index_name)
         if isinstance(sites, gpd.GeoSeries):
             sites = sites.to_frame()
-        self.sites = sites
+        self.sites_gdf = sites
 
         # process the `features` arg
         # if we only have one feature, put it as a list
@@ -319,7 +281,7 @@ class FocalAnalysis:
             else:
                 # assert it is a callable
                 feature_method_dict[feature] = feature
-        # self.feature_method_dict = feature_method_dict
+        self.feature_method_dict = feature_method_dict
 
         # small utility to dry the processing of some args
         def _process_scalar_sequence_mapping_arg(arg):
@@ -342,7 +304,7 @@ class FocalAnalysis:
             return arg
 
         # process the `data` arg
-        data = _process_scalar_sequence_mapping_arg(data)
+        self.data_dict = _process_scalar_sequence_mapping_arg(data)
 
         # process the `buffer_dists` arg
         # we cannot use `_process_scalar_sequence_mapping_arg` because this is slightly
@@ -371,199 +333,157 @@ class FocalAnalysis:
         else:
             # assume that `buffer_dists` is a mapping so there is nothing to do
             pass
-        # self.buffer_dists_dict = buffer_dists
+        self.buffer_dists_dict = buffer_dists
 
         # process the `feature_col_prefixes` arg
-        feature_col_prefixes = _process_scalar_sequence_mapping_arg(
+        self.feature_col_prefix_dict = _process_scalar_sequence_mapping_arg(
             feature_col_prefixes
         )
 
-        # process the `feature_methods_args_dict` arg
+        # process the `feature_methods_args` arg
         if feature_methods_args is None:
             feature_methods_args = {}
         if len(features) == 1 and features[0] not in feature_methods_args:
             feature_methods_args = {features[0]: feature_methods_args}
-        # self.feature_methods_args = feature_methods_args
+        self.feature_methods_args_dict = feature_methods_args
 
         # process the `feature_methods_kwargs` arg
         if feature_methods_kwargs is None:
             feature_methods_kwargs = {}
         if len(features) == 1 and features[0] not in feature_methods_kwargs:
             feature_methods_kwargs = {features[0]: feature_methods_kwargs}
-        # self.feature_methods_kwargs = feature_methods_kwargs
+        self.feature_methods_kwargs_dict = feature_methods_kwargs
 
-        # compute the features
-        self.features_df = _compute_features_df(
-            sites,
-            data,
-            buffer_dists,
-            feature_method_dict,
-            feature_col_prefixes,
-            feature_methods_args,
-            feature_methods_kwargs,
+        # compute the features for the initialization sites
+        self.features_df = self.compute_features_df(
+            sites_gdf=self.sites_gdf,
         )
 
-    def decompose(
+    def compute_features_df(
         self,
         *,
-        decomposer=None,
-        preprocessor=None,
-        preprocessor_kwargs=None,
-        imputer=None,
-        imputer_kwargs=None,
-        **decomposer_kwargs,
-    ):
-        """Factorize the spatial signature matrix into components.
-
-        Parameters
-        ----------
-        decomposer : class, optional
-            A class that implements the decomposition algorithm. It can be any
-            scikit-learn like transformer that implements the `fit`, `transform` and
-            `fit_transform` methods and with the `components_` and `n_components`
-            attributes. If no value is provided, the default value set in
-            `settings.FEATURE_DECOMPOSER` will be taken.
-        preprocessor : class, optional
-            A class that implements the preprocessing algorithm. It can be any
-            scikit-learn like transformer that implements the `fit_transform` method.
-            If no value is provided, the default value set in
-            `settings.FEATURE_PREPROCESSOR` will be taken.
-        preprocessor_kwargs : mapping, optional
-            Keyword arguments to be passed to the initializationof `preprocessor`.
-        imputer : class, optional
-            A class that implements the imputation algorithm. It can be any scikit-learn
-            like transformer that implements the `fit_transform` method. If no value is
-            provided, no imputation will be performed.
-        imputer_kwargs : mapping, optional
-            Keyword arguments to be passed to the initialization of `imputer`. Ignored
-            if `imputer` is `None`.
-        **decomposer_kwargs : mapping, optional
-            Keyword arguments to be passed to the initialization of `decomposer`.
-
-        Returns
-        -------
-        components_df : pandas.DataFrame
-            A DataFrame with the components of the decomposition. Each row corresponds
-            to a landscape and each column to a component.
-        decomposer_model : object
-            The fitted decomposer model.
-        """
-        # ACHTUNG: using a copy to avoid modifying the original features_df
-        X = self.features_df.copy()
-
-        if preprocessor is None:
-            preprocessor = settings.FEATURE_PREPROCESSOR
-
-        if preprocessor:  # user can provide `preprocessor=False` to skip this step
-            if preprocessor_kwargs is None:
-                preprocessor_kwargs = {}
-            X = _fit_transform(X, preprocessor, **preprocessor_kwargs)
-
-        if imputer is not None:
-            if imputer_kwargs is None:
-                imputer_kwargs = {}
-            X = _fit_transform(X, imputer, **imputer_kwargs)
-
-        if decomposer is None:
-            decomposer = settings.FEATURE_DECOMPOSER
-        try:
-            # try if the model accepts nan values
-            decompose_model = decomposer(**decomposer_kwargs).fit(X)
-        except ValueError:
-            warnings.warn(
-                "The provided spatial signatures contain NaN values which are not "
-                "supported by the decomposition model. In order to proceed, the NaN "
-                "values will be dropped. However, you may consider either (i) changing "
-                "the chosen metrics or (ii) imputing the NaN values by providing the "
-                "`imputer` and `imputer_kwargs` arguments.",
-                RuntimeWarning,
+        sites_gdf: gpd.GeoDataFrame | None = None,
+        spatial_extent: pyregeon.RegionType | None = None,
+        grid_res: float | None = None,
+        process_region_arg_kwargs: utils.KwargsType = None,
+        **generate_regular_grid_gser_kwargs: utils.KwargsType,
+    ) -> pd.DataFrame:
+        """Compute a data frame of multi-scale features for the provided sites."""
+        if sites_gdf is None:
+            if grid_res is None:
+                raise ValueError(
+                    "When `sites_gdf` is not provided, `grid_res` must be provided."
+                )
+            if process_region_arg_kwargs is None:
+                process_region_arg_kwargs = {}
+            # the grid geometry type must be "point"
+            _generate_regular_grid_gser_kwargs = (
+                generate_regular_grid_gser_kwargs.copy()
             )
-            X = X.dropna()
-            decompose_model = decomposer(**decomposer_kwargs).fit(X)
-        # set X to the reduced matrix but as a data frame with the same index as the
-        # original metrics' matrix (taking into account the dropped rows if any)
-        return pd.DataFrame(
-            decompose_model.transform(X), index=X.index
-        ), decompose_model
-
-    def get_loading_df(self, decompose_model, *, columns=None, index=None, **df_kwargs):
-        """Get components loadings for each metric.
-
-        Parameters
-        ----------
-        decompose_model : object
-            The decomposition model fitted to the spatial signature matrix.
-        columns : list-like, optional
-            Column names for the components. If no value is provided, an integer range
-            from 0 to `n_components_ - 1` will be used.
-        index : list-like, optional
-            Index names for the metrics. If no value is provided, the column names of
-            `metrics_df` will be used.
-        **df_kwargs : mapping, optional
-            Keyword arguments to be passed to the initialization of `pandas.DataFrame`
-
-        Returns
-        -------
-        loading_df : pandas.DataFrame
-            A DataFrame with the loadings of the components. Each row corresponds to a
-            metric and each column to a component.
-        """
-        if df_kwargs is None:
-            _df_kwargs = {}
-        else:
-            _df_kwargs = df_kwargs.copy()
-        if columns is None:
-            columns = _df_kwargs.pop(
-                "columns",
-                range(decompose_model.n_components_),
+            _ = _generate_regular_grid_gser_kwargs.pop("geometry_type", None)
+            _generate_regular_grid_gser_kwargs["geometry_type"] = "point"
+            sites_gdf = (
+                pyregeon.generate_regular_grid_gser(
+                    pyregeon.RegionMixin._process_region_arg(
+                        spatial_extent, **process_region_arg_kwargs
+                    )["geometry"],
+                    grid_res,
+                    **_generate_regular_grid_gser_kwargs,
+                )
+                .to_crs(self.sites_gdf.crs)
+                .to_frame(name="geometry")
             )
-        if index is None:
-            index = _df_kwargs.pop("index", self.features_df.columns)
-        return pd.DataFrame(
-            decompose_model.components_.T, columns=columns, index=index, **_df_kwargs
+
+        # small utility
+        def _prefix_rename_dict(feature):
+            feature_col_prefix = self.feature_col_prefix_dict.get(feature, "")
+            if feature_col_prefix:
+                return lambda feature_col: f"{feature_col_prefix}_{feature_col}"
+            else:
+                return {}
+
+        # ACHTUNG: we need to unstack each `feature_df` individually because each
+        # feature may have different scales/buffer distances
+        features_df = pd.concat(
+            [
+                feature_method(
+                    self.data_dict[feature_method],
+                    sites_gdf,
+                    self.buffer_dists_dict[feature_method],
+                    *self.feature_methods_args_dict.get(feature, []),
+                    **self.feature_methods_kwargs_dict.get(feature, {}),
+                )
+                .rename(columns=_prefix_rename_dict(feature_method))
+                .unstack(level="buffer_dist")
+                for feature, feature_method in self.feature_method_dict.items()
+            ],
+            axis="columns",
         )
+        features_df.columns = [
+            f"{feature_col}_{buffer_dist}"
+            for feature_col, buffer_dist in features_df.columns.values
+        ]
+        return features_df
 
-    def scatterplot_features(
+    def predict(
         self,
-        feature_x,
-        feature_y,
+        model: BaseEstimator | Callable,
+        sites: gpd.GeoDataFrame | gpd.GeoSeries,
         *,
-        hue=None,
-        ax=None,
-        **scatterplot_kwargs,
+        features: str | Sequence[str] | None = None,
+    ) -> pd.Series:
+        """Predict using a fitted scikit-learn-like model for the provided sites."""
+        if isinstance(sites, gpd.GeoSeries):
+            sites = sites.to_frame()
+        # TODO: only compute requested features/scales
+        # compute features
+        X_df = self.compute_features_df(sites_gdf=sites.to_crs(self.sites_gdf.crs))
+        # select only requested features
+        if features is not None:
+            if not pd.api.types.is_list_like(features):
+                features = [features]
+            X_df = X_df[features]
+
+        return pd.Series(model.predict(X_df), index=X_df.index)
+
+    def predict_raster(
+        self,
+        model: BaseEstimator | Callable,
+        spatial_extent: pyregeon.RegionType,
+        grid_res: float,
+        *,
+        features: str | Sequence[str] = None,
+        pred_label: str = "pred",
+        process_region_arg_kwargs: utils.KwargsType = None,
+        **generate_regular_grid_gser_kwargs: utils.KwargsType,
     ):
-        """Scatterplot the site samples by two selected features.
-
-        Parameters
-        ----------
-        feature_x, feature_y : str
-            Strings with the names of the metrics to be plotted on the x and y axes
-            respectively. Should be a column of `cgram.data`. Note thus that for
-            class-level metrics, the passed string should be of the form
-            "{metric}_{class_val}".
-        ax : matplotlib.axes.Axes, optional
-            Axes object to draw the plot onto, otherwise create a new figure.
-        **scatterplot_kwargs : mapping, optional
-            Keyword arguments to be passed to `seaborn.scatterplot`.
-
-        Returns
-        -------
-        ax : matplotlib.axes.Axes
-            Returns the `Axes` object with the plot drawn onto it.
-
-        """
-        if hue in self.sites.columns:
-            hue = self.sites.loc[self.features_df.index, hue].values
-
-        if ax is None:
-            _, ax = plt.subplots()
-
-        sns.scatterplot(
-            x=feature_x,
-            y=feature_y,
-            data=self.features_df,
-            hue=hue,
-            **scatterplot_kwargs,
+        """Predict a raster grid using a fitted scikit-learn-like model."""
+        if process_region_arg_kwargs is None:
+            process_region_arg_kwargs = {}
+        # the grid geometry type must be "point"
+        _generate_regular_grid_gser_kwargs = generate_regular_grid_gser_kwargs.copy()
+        _ = _generate_regular_grid_gser_kwargs.pop("geometry_type", None)
+        _generate_regular_grid_gser_kwargs["geometry_type"] = "point"
+        grid_sites_gdf = (
+            pyregeon.generate_regular_grid_gser(
+                pyregeon.RegionMixin._process_region_arg(
+                    spatial_extent, **process_region_arg_kwargs
+                )["geometry"],
+                grid_res,
+                **_generate_regular_grid_gser_kwargs,
+            )
+            # .to_crs(self.sites_gdf.crs)
+            .to_frame(name="geometry")
         )
-
-        return ax
+        pred_gdf = gpd.GeoDataFrame(
+            {pred_label: self.predict(model, grid_sites_gdf, features=features)},
+            geometry=grid_sites_gdf["geometry"],
+        )
+        for coord in ["x", "y"]:
+            pred_gdf[coord] = getattr(pred_gdf["geometry"], coord)
+        return (
+            pred_gdf.reset_index(drop=True)
+            .set_index(["y", "x"])
+            .drop(columns="geometry")
+            .to_xarray()[pred_label]
+        )
