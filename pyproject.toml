@@ -2,9 +2,6 @@
 requires = ["uv_build>=0.9.4,<0.10.0"]
 build-backend = "uv_build"
 
-[dependency-groups]
-user-guide = ["swisstopopy>=0.1.0,<0.2"]
-
 [project]
 name = "focalpy"
 version = "0.1.0"
@@ -27,10 +24,13 @@ dependencies = [
   "numpy>=2.0.0",
   "osmnx>=2.0.0",
   "pandas",
+  "pyogrio",
   "pyregeon",
   "rasterio",
   "rasterstats",
+  "scikit-learn",
   "shapely",
+  "statsmodels",
   "tqdm",
   "xdem"
 ]
@@ -66,23 +66,20 @@ test = [
 user-guide = [
   "contextily",
   "ipywidgets",
+  "folium",
+  "mapclassify",
   "meteora",
   "momepy",
-  "osmnx",
   "pdal",
   "pylandstats",
   "seaborn",
-  "swisslandstats-geopy",
-  # "swisstopopy",
+  "swisstopopy",
   "xdem",
   "zenodo-client>=0.3.6,<0.4"
 ]
 
 [project.urls]
 Repository = "https://github.com/martibosch/focalpy"
-
-[tool.codespell]
-skip = "docs/overview.ipynb"
 
 [tool.commitizen]
 major_version_zero = true
@@ -106,12 +103,9 @@ omit = ["tests/*", "docs/conf.py"]
 source = ["focalpy"]
 
 [tool.pixi.dependencies]
-python = ">=3.10,<3.14"
-ipykernel = ">=7.1.0,<8"
 gdal = ">=3"
-pyogrio = ">=0.11.1,<0.12"
 pyproj = ">=3.7.2,<4"
-statsmodels = ">=0.14.5,<0.15"
+python = ">=3.10,<3.14"
 
 [tool.pixi.environments]
 dev = ["dev"]
@@ -130,10 +124,8 @@ build-doc = {cmd = "sphinx-build docs docs/_build"}
 test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
 
 [tool.pixi.feature.user-guide.dependencies]
+ipykernel = ">=7.1.0,<8"
 pdal = ">=2.9.2,<3"
-folium = ">=0.20.0,<0.21"
-mapclassify = ">=2.10.0,<3"
-scikit-learn = ">=1.7.2,<2"
 
 [tool.pixi.pypi-dependencies]
 focalpy = {path = ".", editable = true}
