@@ -423,7 +423,7 @@ class FocalAnalysis:
             f"{feature_col}_{buffer_dist}"
             for feature_col, buffer_dist in features_df.columns.values
         ]
-        return features_df
+        return features_df.loc[sites_gdf.index]
 
     def predict(
         self,

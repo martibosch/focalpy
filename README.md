@@ -17,9 +17,7 @@ Toolkit for focal site multi-scale studies in Python.
 Compute multi-scale spatial predictors:
 
 ```python
-import contextily as cx
 import geopandas as gpd
-import matplotlib.pyplot as plt
 from sklearn import ensemble
 
 import focalpy
@@ -123,14 +121,9 @@ model = ensemble.GradientBoostingRegressor().fit(fa.features_df, species_gdf[y_c
 pred_da = fa.predict_raster(model, study_area_filepath, grid_res, pred_label=y_col)
 
 # plot the field data and predicted raster
-fig, ax = plt.subplots()
-cmap = "BuGn"
-vmin = min(pred_da.min().item(), species_gdf[y_col].min())
-vmax = max(pred_da.max().item(), species_gdf[y_col].max())
-pred_da.plot(ax=ax, alpha=0.7, vmin=vmin, vmax=vmax, cmap=cmap)
-species_gdf.plot(y_col, ax=ax, edgecolor="k", vmin=vmin, vmax=vmax, cmap=cmap)
-ax.set_axis_off()
-cx.add_basemap(ax, crs=species_gdf.crs, attribution=False)
+focalpy.plot_raster_and_gdf(
+    pred_da, species_gdf, species_gdf[y_col], cmap="BuGn", attribution=False
+)
 ```
 
 ![pred-raster](https://github.com/martibosch/focalpy/raw/main/figures/pred-raster.png)
