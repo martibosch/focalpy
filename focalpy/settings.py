@@ -6,7 +6,9 @@ from sklearn import linear_model, pipeline
 # compute features
 # TODO: dict-like fillna for different statistics?
 VECTOR_FEATURES_FILLNA = 0
+VECTOR_DISTANCE_FILLNA = 0
 RASTER_FEATURES_FILLNA = 0
+RASTER_VALUE_AT_SITE_FILLNA = 0
 
 # focal analysis
 # FEATURE_PREPROCESSOR = preprocessing.StandardScaler

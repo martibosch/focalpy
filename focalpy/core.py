@@ -15,7 +15,14 @@ from sklearn.base import BaseEstimator
 import focalpy
 from focalpy import settings, utils
 
-__all__ = ["compute_vector_features", "compute_raster_features", "FocalAnalysis"]
+__all__ = [
+    "compute_vector_features",
+    "compute_vector_distance",
+    "compute_raster_features",
+    "compute_raster_value_at_site",
+    "compute_elevation_at_site",
+    "FocalAnalysis",
+]
 
 
 # compute methods
@@ -169,6 +176,66 @@ def compute_vector_features(
     return vector_features_df
 
 
+def compute_vector_distance(
+    data: gpd.GeoDataFrame | utils.PathType,
+    sites: gpd.GeoSeries | gpd.GeoDataFrame,
+    buffer_dists: float | Sequence[float] | None = None,  # noqa: ARG001
+    *,
+    feature_name: str = "distance",
+    max_distance: float | None = None,
+    fillna: utils.FillnaType = None,
+) -> pd.Series:
+    """Compute multi-scale vector aggregation features.
+
+    Parameters
+    ----------
+    data : geopandas.GeoDataFrame or path-like
+        Vector data to compute features.
+    sites : geopandas.GeoSeries or geopandas.GeoDataFrame
+        Site locations (point geometries) to compute features.
+    buffer_dists : list-like of numeric
+        The buffer distances to compute features, in the same units as the vector data
+        CRS.
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.VECTOR_DISTANCE_FILLNA` is used.
+
+    Returns
+    -------
+    dist_ser : pandas.Series
+        The computed distance for each site.
+    """
+    # TODO: do we really need to accept file-like `data` or should we support geo-data
+    # frames only?
+    # TODO: DRY with `compute_vector_features`
+    if isinstance(data, utils.PathType):
+        gdf = gpd.read_file(data)
+    else:
+        gdf = data
+
+    # ensure that we have a geo-data-frame for sjoin
+    if isinstance(sites, gpd.GeoSeries):
+        sites = sites.to_frame()
+
+    # TODO: ensure geographic CRS?
+    # if bool(getattr(sites.crs, "is_geographic", False)):
+    #     raise ValueError("Use a projected CRS (distance in meters, not degrees).")
+
+    dist_ser = sites.sjoin_nearest(
+        gdf.to_crs(sites.crs)[["geometry"]],
+        how="left",
+        distance_col=feature_name,
+        max_distance=max_distance,
+    )[[feature_name]]
+
+    if fillna is None:
+        fillna = settings.VECTOR_DISTANCE_FILLNA
+    if fillna == 0 or fillna:
+        dist_ser = dist_ser.fillna(fillna)
+    return dist_ser
+
+
 ## raster
 def compute_raster_features(
     raster: np.ndarray | rio.io.MemoryFile | utils.PathType,
@@ -228,6 +295,137 @@ def compute_raster_features(
         raster_features_df = raster_features_df.fillna(fillna)
 
     return raster_features_df
+
+
+def compute_raster_value_at_site(
+    raster: rio.io.MemoryFile | utils.PathType,
+    sites: gpd.GeoSeries | gpd.GeoDataFrame,
+    buffer_dists: float | Sequence[float] | None = None,  # noqa: ARG001
+    *,
+    indexes: int | Sequence[int] = 1,
+    feature_names: str | Sequence[str] | None = None,
+    band_prefix: str = "band",
+    fillna: utils.FillnaType = None,
+    **sample_kwargs: utils.KwargsType,
+) -> pd.DataFrame:
+    """Sample raster values at site locations (single-scale features).
+
+    Parameters
+    ----------
+    raster : numpy.ndarray, rasterio.io.MemoryFile or path-like
+        Raster data to compute features.
+    sites : geopandas.GeoSeries or geopandas.GeoDataFrame
+        Site locations (point geometries) to compute features.
+    buffer_dists : list-like of numeric
+        Accepted for FocalAnalysis compatibility but ignored.
+    indexes : int or list-like of int, default 1
+        Band index(es) to sample. Passed to `rasterio.DatasetReader.sample` as the
+        `indexes` argument. Note that band indexes start at 1 in rasterio.
+    feature_names : str or list-like of str, optional
+        Feature name(s) for the sampled band(s). The length of `feature_names` must
+        match the length of `indexes`. If a single string is provided, `indexes` must be
+        a single integer.
+    band_prefix : str, default "band"
+        Prefix to use for feature names when `feature_names` is not provided. The final
+        feature names will be in the format `{band_prefix}_{index}`. Ignored if
+        `feature_names` is provided.
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.RASTER_VALUE_AT_SITE_FILLNA` is used.
+    **sample_kwargs : mapping, optional
+        Keyword arguments to pass to `rasterio.DatasetReader.sample`.
+
+    Returns
+    -------
+    value_at_site_df : pandas.DataFrame
+        The computed values for each band at each site.
+    """
+    # ensure that we have a geo-series
+    if isinstance(sites, gpd.GeoDataFrame):
+        sites = sites.geometry
+
+    # ensure that band indexes is a list
+    if np.isscalar(indexes):
+        indexes = [indexes]
+    # else:
+    #     indexes = list(indexes)
+
+    # process feature names
+    if feature_names is None:
+        # default feature names
+        feature_names = [f"{band_prefix}_{idx}" for idx in indexes]
+    elif not pd.api.types.is_list_like(feature_names):
+        # ensure
+        feature_names = [feature_names]
+
+    # ensure matching number of bands and feature names
+    if len(feature_names) != len(indexes):
+        raise ValueError("`feature_names` length must match `indexes` length.")
+
+    if isinstance(raster, rio.io.MemoryFile):
+        src_context = raster.open()
+    else:
+        src_context = rio.open(raster)
+    # TODO: support ndarray+affine?
+
+    with src_context as src:
+        # get xy coordinates ensuring a matching crs
+        coords = [(geom.x, geom.y) for geom in sites.to_crs(src.crs)]
+        # samples = np.ma.array(
+        #     list(src.sample(coords, indexes=indexes, masked=masked, **sample_kwargs))
+        # ).filled(np.nan)
+        pixel_features_df = pd.DataFrame(
+            src.sample(coords, indexes=indexes, **sample_kwargs),
+            index=sites.index,
+            columns=feature_names,
+        )
+
+    if fillna is None:
+        fillna = settings.RASTER_VALUE_AT_SITE_FILLNA
+    if fillna == 0 or fillna:
+        pixel_features_df = pixel_features_df.fillna(fillna)
+
+    return pixel_features_df
+
+
+def compute_elevation_at_site(
+    raster: rio.io.MemoryFile | utils.PathType,
+    sites: gpd.GeoSeries | gpd.GeoDataFrame,
+    buffer_dists: float | Sequence[float] | None = None,  # noqa: ARG001
+    *,
+    fillna: utils.FillnaType = None,
+    **sample_kwargs: utils.KwargsType,
+) -> pd.DataFrame:
+    """Get the elevation at site locations (single-scale feature).
+
+    This is a wrapper around `compute_raster_value_at_site` with default arguments set
+    for elevation data, i.e., assuming a single-band elevation raster (DEM).
+
+    Parameters
+    ----------
+    raster : numpy.ndarray, rasterio.io.MemoryFile or path-like
+        Raster data to compute features.
+    sites : geopandas.GeoSeries or geopandas.GeoDataFrame
+        Site locations (point geometries) to compute features.
+    buffer_dists : list-like of numeric
+        Accepted for FocalAnalysis compatibility but ignored.
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.RASTER_FEATURES_FILLNA` is used.
+    **sample_kwargs : mapping, optional
+        Keyword arguments to pass to `rasterio.DatasetReader.sample`.
+    """
+    return compute_raster_value_at_site(
+        raster,
+        sites,
+        buffer_dists,
+        indexes=1,
+        feature_names="elevation",
+        fillna=fillna,
+        **sample_kwargs,
+    )
 
 
 def _fit_transform(X, transformer, **transformer_kwargs):
@@ -404,19 +602,28 @@ class FocalAnalysis:
 
         # ACHTUNG: we need to unstack each `feature_df` individually because each
         # feature may have different scales/buffer distances
-        features_df = pd.concat(
-            [
-                feature_method(
-                    self.data_dict[feature_method],
-                    sites_gdf,
-                    self.buffer_dists_dict[feature_method],
-                    *self.feature_methods_args_dict.get(feature, []),
-                    **self.feature_methods_kwargs_dict.get(feature, {}),
+        feature_dfs = []
+        for feature, feature_method in self.feature_method_dict.items():
+            feature_df = feature_method(
+                self.data_dict[feature_method],
+                sites_gdf,
+                self.buffer_dists_dict[feature_method],
+                *self.feature_methods_args_dict.get(feature, []),
+                **self.feature_methods_kwargs_dict.get(feature, {}),
+            ).rename(columns=_prefix_rename_dict(feature_method))
+
+            if not (
+                isinstance(feature_df.index, pd.MultiIndex)
+                and "buffer_dist" in feature_df.index.names
+            ):
+                feature_df = feature_df.assign(**{"buffer_dist": 0}).set_index(
+                    "buffer_dist", append=True
                 )
-                .rename(columns=_prefix_rename_dict(feature_method))
-                .unstack(level="buffer_dist")
-                for feature, feature_method in self.feature_method_dict.items()
-            ],
+
+            feature_dfs.append(feature_df.unstack(level="buffer_dist"))
+
+        features_df = pd.concat(
+            feature_dfs,
             axis="columns",
         )
         features_df.columns = [
