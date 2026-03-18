@@ -72,6 +72,10 @@ test = [
 [project.urls]
 Repository = "https://github.com/martibosch/focalpy"
 
+[tool.codespell]
+ignore-regex = '^\s*"image\/png":\s.*'
+skip = "CHANGELOG.md,pixi.lock,docs/references.bib"
+
 [tool.commitizen]
 major_version_zero = true
 name = "cz_conventional_commits"
