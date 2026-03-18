@@ -10,5 +10,6 @@ maxdepth: 1
 landscape-species-inference
 land-use-regression
 spatial-predictors
+embeddings
 a01-data
 ```

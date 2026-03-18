@@ -239,9 +239,12 @@ def compute_vector_distance(
 ## raster
 def compute_raster_features(
     raster: np.ndarray | rio.io.MemoryFile | utils.PathType,
-    sites: gpd.GeoSeries,
+    sites: gpd.GeoSeries | gpd.GeoDataFrame,
     buffer_dists: float | Sequence[float],
     *,
+    indexes: int | Sequence[int] | None = None,
+    feature_names: str | Sequence[str] | None = None,
+    band_prefix: str = "band",
     affine: affine.Affine | None = None,
     fillna: utils.FillnaType = None,
     **zonal_stats_kwargs: utils.KwargsType,
@@ -257,6 +260,18 @@ def compute_raster_features(
         Site locations (point geometries) to compute features.
     buffer_dists : list-like of numeric
         The buffer distances to compute features, in the same units as the raster CRS.
+    indexes : int or list-like of int, optional
+        Raster band index(es) to compute features for. When provided, features are
+        computed separately for each band and concatenated column-wise with prefixed
+        names. If ``None`` (default), a single set of zonal statistics is computed
+        (standard single-band behaviour).
+    feature_names : str or list-like of str, optional
+        Output feature names for the selected bands. The length must match ``indexes``.
+        If ``None``, names are generated as ``{band_prefix}_{index}``. Ignored when
+        ``indexes`` is ``None``.
+    band_prefix : str, default "band"
+        Prefix used to generate feature names when ``feature_names`` is ``None``.
+        Ignored when ``indexes`` is ``None``.
     affine: `affine.Affine`, optional
         Affine transform. Ignored if `raster` is a path-like object.
     fillna : numeric, mapping, bool, optional
@@ -272,7 +287,61 @@ def compute_raster_features(
         The computed features for each site (first-level index) and buffer distance
         (second-level index).
     """
+    if isinstance(sites, gpd.GeoDataFrame):
+        sites = sites.geometry
 
+    # Multi-band path: iterate over bands, compute per-band features, concat
+    if indexes is not None:
+        if np.isscalar(indexes):
+            indexes = [indexes]
+        else:
+            indexes = list(indexes)
+
+        # process feature names
+        if feature_names is None:
+            feature_names = [f"{band_prefix}_{idx}" for idx in indexes]
+        elif isinstance(feature_names, str):
+            feature_names = [feature_names]
+        else:
+            feature_names = list(feature_names)
+        if len(feature_names) != len(indexes):
+            raise ValueError("`feature_names` length must match `indexes` length.")
+
+        # determine requested stats for column filtering/renaming
+        stats = zonal_stats_kwargs.get("stats", None)
+        if stats is not None:
+            if not pd.api.types.is_list_like(stats):
+                stats = [stats]
+            else:
+                stats = list(stats)
+
+        band_feature_dfs = []
+        for index, feature_name in zip(indexes, feature_names):
+            band_feature_df = compute_raster_features(
+                raster,
+                sites,
+                buffer_dists,
+                affine=affine,
+                fillna=False,
+                band=index,
+                **zonal_stats_kwargs,
+            )
+            if stats is not None and set(stats).issubset(band_feature_df.columns):
+                band_feature_df = band_feature_df.loc[:, stats]
+            band_feature_dfs.append(
+                band_feature_df.rename(columns=lambda stat: f"{feature_name}_{stat}")
+            )
+
+        raster_features_df = pd.concat(band_feature_dfs, axis="columns")
+
+        if fillna is None:
+            fillna = settings.RASTER_FEATURES_FILLNA
+        if fillna == 0 or fillna:
+            raster_features_df = raster_features_df.fillna(fillna)
+
+        return raster_features_df
+
+    # Single-band path (existing behaviour)
     def _zonal_stats(buffers, *args, **kwargs):
         return pd.DataFrame(
             rasterstats.zonal_stats(buffers, *args, **kwargs), index=buffers.index
