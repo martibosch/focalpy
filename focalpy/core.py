@@ -526,6 +526,7 @@ class FocalAnalysis:
         feature_col_prefixes: str | Sequence[str] | Mapping | None = None,
         feature_methods_args: utils.KwargsType = None,
         feature_methods_kwargs: utils.KwargsType = None,
+        chunk_size: int | None = None,
     ):
         # # ensure that we have an index name
         # site_index_name = sites.index.name
@@ -620,16 +621,58 @@ class FocalAnalysis:
         if len(features) == 1 and features[0] not in feature_methods_kwargs:
             feature_methods_kwargs = {features[0]: feature_methods_kwargs}
         self.feature_methods_kwargs_dict = feature_methods_kwargs
+        self.chunk_size = chunk_size
 
         # compute the features for the initialization sites
         self.features_df = self.compute_features_df(
             sites_gdf=self.sites_gdf,
+            chunk_size=self.chunk_size,
         )
+
+    def _compute_features_for_chunk(self, sites_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+        """Compute features for a single chunk of sites (no chunking logic)."""
+
+        def _prefix_rename_dict(feature):
+            feature_col_prefix = self.feature_col_prefix_dict.get(feature, "")
+            if feature_col_prefix:
+                return lambda feature_col: f"{feature_col_prefix}_{feature_col}"
+            else:
+                return {}
+
+        # ACHTUNG: we need to unstack each `feature_df` individually because each
+        # feature may have different scales/buffer distances
+        feature_dfs = []
+        for feature, feature_method in self.feature_method_dict.items():
+            feature_df = feature_method(
+                self.data_dict[feature_method],
+                sites_gdf,
+                self.buffer_dists_dict[feature_method],
+                *self.feature_methods_args_dict.get(feature, []),
+                **self.feature_methods_kwargs_dict.get(feature, {}),
+            ).rename(columns=_prefix_rename_dict(feature_method))
+
+            if not (
+                isinstance(feature_df.index, pd.MultiIndex)
+                and "buffer_dist" in feature_df.index.names
+            ):
+                feature_df = feature_df.assign(**{"buffer_dist": 0}).set_index(
+                    "buffer_dist", append=True
+                )
+
+            feature_dfs.append(feature_df.unstack(level="buffer_dist"))
+
+        features_df = pd.concat(feature_dfs, axis="columns")
+        features_df.columns = [
+            f"{feature_col}_{buffer_dist}"
+            for feature_col, buffer_dist in features_df.columns.values
+        ]
+        return features_df.loc[sites_gdf.index]
 
     def compute_features_df(
         self,
         *,
         sites_gdf: gpd.GeoDataFrame | None = None,
+        chunk_size: int | None = None,
         spatial_extent: pyregeon.RegionType | None = None,
         grid_res: float | None = None,
         process_region_arg_kwargs: utils.KwargsType = None,
@@ -661,45 +704,16 @@ class FocalAnalysis:
                 .to_frame(name="geometry")
             )
 
-        # small utility
-        def _prefix_rename_dict(feature):
-            feature_col_prefix = self.feature_col_prefix_dict.get(feature, "")
-            if feature_col_prefix:
-                return lambda feature_col: f"{feature_col_prefix}_{feature_col}"
-            else:
-                return {}
-
-        # ACHTUNG: we need to unstack each `feature_df` individually because each
-        # feature may have different scales/buffer distances
-        feature_dfs = []
-        for feature, feature_method in self.feature_method_dict.items():
-            feature_df = feature_method(
-                self.data_dict[feature_method],
-                sites_gdf,
-                self.buffer_dists_dict[feature_method],
-                *self.feature_methods_args_dict.get(feature, []),
-                **self.feature_methods_kwargs_dict.get(feature, {}),
-            ).rename(columns=_prefix_rename_dict(feature_method))
-
-            if not (
-                isinstance(feature_df.index, pd.MultiIndex)
-                and "buffer_dist" in feature_df.index.names
-            ):
-                feature_df = feature_df.assign(**{"buffer_dist": 0}).set_index(
-                    "buffer_dist", append=True
-                )
-
-            feature_dfs.append(feature_df.unstack(level="buffer_dist"))
-
-        features_df = pd.concat(
-            feature_dfs,
-            axis="columns",
-        )
-        features_df.columns = [
-            f"{feature_col}_{buffer_dist}"
-            for feature_col, buffer_dist in features_df.columns.values
-        ]
-        return features_df.loc[sites_gdf.index]
+        if chunk_size is not None and len(sites_gdf) > chunk_size:
+            return pd.concat(
+                [
+                    self._compute_features_for_chunk(
+                        sites_gdf.iloc[i : i + chunk_size]
+                    )
+                    for i in range(0, len(sites_gdf), chunk_size)
+                ]
+            )
+        return self._compute_features_for_chunk(sites_gdf)
 
     def predict(
         self,
