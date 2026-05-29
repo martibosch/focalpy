@@ -182,11 +182,12 @@ def scale_of_effect_features(
         `scipy.stats` (e.g., `"pearsonr"`, `"spearmanr"`) or a model attribute from a
         statsmodels or spreg model (e.g., `"rsquared"`, `"aic"`). If `None`, defaults
         to `settings.SCALE_OF_EFFECT_CRITERIA`.
-    direction : str, optional
-        The direction of the criteria, either `"max"` (higher is better) or `"min"`
-        (lower is better). If `None`, the direction is inferred from
-        `settings.SCALE_OF_EFFECT_CRITERIA_DIRECTION_DICT`. Required if the direction
-        cannot be inferred.
+    direction : {"max", "min", "absmax"}, optional
+        The direction of the criteria: `"max"` (higher is better), `"min"`
+        (lower is better), or `"absmax"` (strongest absolute value, suitable for
+        correlation coefficients that can be negative). If `None`, the direction is
+        inferred from `settings.SCALE_OF_EFFECT_CRITERIA_DIRECTION_DICT`. Required if
+        the direction cannot be inferred.
     model : statsmodels or spreg Model class, optional
         The model class to use if `criteria` is a model attribute. If `None`, defaults
         to `settings.SCALE_OF_EFFECT_MODEL`. Ignored if `criteria` is a `scipy.stats`
@@ -221,6 +222,14 @@ def scale_of_effect_features(
         model=model,
         **eval_func_kwargs,
     )
+
+    # absmax: select by strongest absolute value (for signed criteria like
+    # correlation coefficients where negative values indicate strong inverse
+    # relationships, not weak ones)
+    if direction == "absmax":
+        eval_ser = eval_ser.abs()
+        direction = "max"
+
     if isinstance(eval_ser.index, pd.MultiIndex):
         # how == "individual"
         # TODO: manage index level names better than default "level_0", "level_1", etc?

@@ -26,8 +26,10 @@ SCALE_OF_EFFECT_CRITERIA_DIRECTION_DICT = {
     "rsquared": "max",
     "aic": "min",
     "bic": "min",
-    # scipy.stats
-    "spearmanr": "max",
+    # scipy.stats (absmax: strongest absolute correlation, regardless of sign)
+    "spearmanr": "absmax",
+    "pearsonr": "absmax",
+    "kendalltau": "absmax",
 }
 SCALE_OF_EFFECT_MODEL = sm.OLS
 SCALE_OF_EFFECT_HOW = "global"
