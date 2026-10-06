@@ -11,7 +11,7 @@ version = "0.1.0"
 description = "Multi-scale landscape features in Python"
 readme = "README.md"
 authors = [
-  {email = "marti.bosch@epfl.ch", name = "Martí Bosch"}
+  { email = "marti.bosch@epfl.ch", name = "Martí Bosch" }
 ]
 classifiers = [
   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -110,14 +110,14 @@ test = ["test"]
 user-guide = ["user-guide"]
 
 [tool.pixi.feature.dev.tasks]
-build = {cmd = "python -m build"}
-check = {cmd = "twine check dist/*", depends-on = ["build"]}
+build = { cmd = "python -m build" }
+check = { cmd = "twine check dist/*", depends-on = ["build"] }
 
 [tool.pixi.feature.doc.tasks]
-build-doc = {cmd = "sphinx-build docs docs/_build"}
+build-doc = { cmd = "sphinx-build docs docs/_build" }
 
 [tool.pixi.feature.test.tasks]
-test = {cmd = "pytest -s --cov=focalpy --cov-report=xml tests"}
+test = { cmd = "pytest -s --cov=focalpy --cov-report=xml tests" }
 
 [tool.pixi.feature.user-guide.dependencies]
 contextily = ">=1.7.0,<2"
@@ -134,7 +134,7 @@ pooch = ">=1.9.0,<2"
 rioxarray = ">=0.22.0,<0.23"
 
 [tool.pixi.pypi-dependencies]
-focalpy = {path = ".", editable = true}
+focalpy = { path = ".", editable = true }
 
 [tool.pixi.workspace]
 authors = ["Martí Bosch <marti.bosch@protonmail.com>"]
