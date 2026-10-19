@@ -23,7 +23,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13"
 ]
 dependencies = [
+  "esda",
   "geopandas>=1.0.0",
+  "libpysal",
   "momepy",
   "numpy>=2.0.0",
   "osmnx>=2.0.0",

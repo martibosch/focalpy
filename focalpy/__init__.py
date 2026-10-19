@@ -1,6 +1,7 @@
 """focalpy."""
 
 from focalpy.core import *
+from focalpy.diagnostics import *
 from focalpy.landscape_metrics import *
 from focalpy.plot import *
 from focalpy.scale import *
