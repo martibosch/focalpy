@@ -10,9 +10,9 @@ import xdem
 from rasterio import mask
 from tqdm.auto import tqdm
 
-from focalpy import core, utils
+from focalpy import core, settings, utils
 
-__all__ = ["compute_terrain_attributes"]
+__all__ = ["compute_terrain_attributes", "compute_topographic_position_index"]
 
 
 def compute_terrain_attributes(
@@ -132,3 +132,90 @@ def compute_terrain_attributes(
         return core._compute_features(
             dem_filepath, sites, buffer_dists, _compute_terrain_attributes
         ).rename(columns=str.lower)
+
+
+def compute_topographic_position_index(
+    dem_filepath: utils.PathType,
+    sites: gpd.GeoSeries,
+    buffer_dists: float | Sequence[float],
+    *,
+    fillna: utils.FillnaType = None,
+    **zonal_stats_kwargs: utils.KwargsType,
+) -> pd.DataFrame:
+    """
+    Compute multi-scale topographic position index (TPI).
+
+    Following Weiss (2001), the TPI at a given scale is the difference between the
+    elevation at the site and the mean elevation over a circular neighbourhood of
+    radius `buffer_dists` centered on it. Positive values denote local convexities
+    (crests, ridges, spurs) and negative values local concavities (valleys, hollows),
+    independently of the absolute elevation.
+
+    ACHTUNG: this is the scale-aware TPI, i.e., the buffer distance sets the
+    neighbourhood that defines the attribute. This is NOT what
+    `compute_terrain_attributes` returns for the "topographic_position_index" attribute:
+    there, the per-cell TPI is computed by `xdem` over a `window_size` cell window
+    (3 by default) and the buffer only sets the extent over which such per-cell values
+    are then aggregated. Since the per-cell TPI is a discrete Laplacian, it nearly
+    cancels out when averaged over a large buffer, yielding values orders of magnitude
+    below the vertical accuracy of the DEM.
+
+    Parameters
+    ----------
+    dem_filepath : path-like
+        Path to a raster file with the DEM data.
+    sites : geopandas.GeoSeries or geopandas.GeoDataFrame
+        Site locations (point geometries) to compute features.
+    buffer_dists : list-like of numeric
+        The neighbourhood radii to compute the TPI, in the same units as the DEM CRS.
+    fillna : numeric, mapping, bool, optional
+        Value to use to fill NaN values in the resulting features DataFrame, passed to
+        `pandas.DataFrame.fillna`. If `False`, no filling is performed. If `None`, the
+        default value set in `settings.RASTER_FEATURES_FILLNA` is used.
+    **zonal_stats_kwargs : mapping, optional
+        Keyword arguments to pass to `rasterstats.zonal_stats` when computing the
+        neighbourhood mean elevation.
+
+    Returns
+    -------
+    tpi_df : pandas.DataFrame
+        The computed TPI for each site (first-level index) and neighbourhood radius
+        (second-level index).
+    """
+    # ensure that we have a geo-series
+    if isinstance(sites, gpd.GeoDataFrame):
+        sites = sites.geometry
+
+    # elevation at the site: a single value per site, broadcast over the radii below.
+    # ACHTUNG: do not fill NaN here, otherwise a no-data site would silently become a
+    # 0 m elevation and produce a spurious (large, negative) TPI
+    site_elevation_ser = core.compute_raster_value_at_site(
+        dem_filepath, sites, feature_names="elevation", fillna=False
+    )["elevation"]
+
+    # mean elevation over the circular neighbourhood of each radius
+    neighborhood_elevation_ser = core.compute_raster_features(
+        dem_filepath,
+        sites,
+        buffer_dists,
+        stats="mean",
+        fillna=False,
+        **zonal_stats_kwargs,
+    )["mean"]
+
+    tpi_df = (
+        neighborhood_elevation_ser.rsub(
+            site_elevation_ser.reindex(
+                neighborhood_elevation_ser.index, level=sites.index.name or 0
+            )
+        )
+        .rename("topographic_position_index")
+        .to_frame()
+    )
+
+    if fillna is None:
+        fillna = settings.RASTER_FEATURES_FILLNA
+    if fillna == 0 or fillna:
+        tpi_df = tpi_df.fillna(fillna)
+
+    return tpi_df
